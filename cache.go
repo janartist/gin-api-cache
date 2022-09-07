@@ -61,7 +61,7 @@ type CacheContext struct {
 }
 
 func Remove(key string) error {
-	err := CM.Store.Remove(key)
+	err := CM.Store.Remove(CACHE_PREFIX + key)
 	return err
 }
 func (c *CacheContext) Remove() error {
@@ -74,13 +74,13 @@ func CacheFunc(co ...CeOpt) gin.HandlerFunc {
 	for _, c := range co {
 		c(ce)
 	}
+	if ce.Ttl == 0 {
+		ce.Ttl = DEFAULT_EXPIRE
+	}
 	return func(c *gin.Context) {
 		var cache store.ResponseCache
 		if ce.Key == "" {
 			ce.Key = c.Request.URL.Path
-		}
-		if ce.Ttl == 0 {
-			ce.Ttl = DEFAULT_EXPIRE
 		}
 		cc := &CacheContext{ce, urlEscape("", c.Request.RequestURI)}
 		c.Set("CacheContext", cc)
@@ -96,9 +96,7 @@ func CacheFunc(co ...CeOpt) gin.HandlerFunc {
 				c.Writer.Header().Set("Cache-Control", "max-age="+strconv.Itoa(int(cache.Ttl.Seconds()))+";must-revalidate")
 			}
 
-			_, err = c.Writer.Write(cache.Data)
-			if err != nil {
-			}
+			_, _ = c.Writer.Write(cache.Data)
 			c.Abort()
 			return
 		}
