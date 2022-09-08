@@ -1,6 +1,7 @@
 package example
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 	apicache "github.com/janartist/api-cache"
 	"github.com/janartist/api-cache/store"
@@ -8,7 +9,7 @@ import (
 	"time"
 )
 
-func main() {
+func route() *gin.Engine {
 	r := gin.Default()
 	_ = apicache.NewDefault(&store.RedisConf{
 		Addr: "127.0.0.1:6379",
@@ -16,29 +17,34 @@ func main() {
 		DB:   0,
 	})
 
-	r.GET("/test-cache1", apicache.CacheFunc(), func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "ok",
-		})
+	r.GET("/test", func(c *gin.Context) {
+		time.Sleep(time.Second)
+		fmt.Print("[/test-cache] DB select ...\n")
+		c.String(200, "test")
 	})
-	r.GET("/test-cache2", apicache.CacheFunc(apicache.Key("test-cache2")), func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "ok",
-		})
+	r.GET("/test-cache-second", apicache.CacheFunc(apicache.Ttl(time.Second)), func(c *gin.Context) {
+		time.Sleep(time.Second)
+		fmt.Print("[/test-cache-second] DB select ...\n")
+		c.String(200, "test-cache-second-res")
 	})
-	r.GET("/test-cache3", apicache.CacheFunc(apicache.Key("test-cache3"), apicache.Ttl(time.Second*10)), func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "ok",
-		})
+	r.GET("/test-cache-second-single", apicache.CacheFunc(apicache.Ttl(time.Second), apicache.Single(true)), func(c *gin.Context) {
+		time.Sleep(time.Second)
+		fmt.Print("[/test-cache-second-single] DB select ...\n")
+		c.String(200, "test-cache-second-single-res")
 	})
 	r.GET("/test-cache-clear", func(c *gin.Context) {
-
-		_ = apicache.Remove("test-cache1")
-		_ = apicache.Remove("test-cache2")
-		_ = apicache.Remove("test-cache3")
+		_ = apicache.Remove("/test")
+		_ = apicache.Remove("/test-cache-second")
+		_ = apicache.Remove("/test-cache-second-single")
 		c.JSON(http.StatusOK, gin.H{
 			"message": "ok",
 		})
 	})
-	r.Run()
+	return r
+}
+func Run() {
+	err := route().Run()
+	if err != nil {
+		return
+	}
 }

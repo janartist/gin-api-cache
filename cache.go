@@ -46,8 +46,9 @@ type CacheStore interface {
 type CeOpt func(*Cache)
 
 type Cache struct {
-	Key string
-	Ttl time.Duration
+	Key    string
+	Ttl    time.Duration
+	Single bool
 }
 
 func Key(key string) CeOpt {
@@ -55,6 +56,9 @@ func Key(key string) CeOpt {
 }
 func Ttl(ttl time.Duration) CeOpt {
 	return func(c *Cache) { c.Ttl = ttl }
+}
+func Single(s bool) CeOpt {
+	return func(c *Cache) { c.Single = s }
 }
 
 type CacheContext struct {
@@ -81,28 +85,42 @@ func CacheFunc(co ...CeOpt) gin.HandlerFunc {
 		ce.Ttl = DEFAULT_EXPIRE
 	}
 	return func(c *gin.Context) {
-		var cache *store.ResponseCache
+		var cache store.ResponseCache
 		if ce.Key == "" {
 			ce.Key = c.Request.URL.Path
 		}
-		cc := &CacheContext{c, ce, urlEscape("", c.Request.RequestURI)}
+		cc := &CacheContext{c, ce, c.Request.RequestURI}
 		//from cache
-		if err := CM.Store.Get(CACHE_PREFIX+ce.Key, cc.requestPath, cache); err == nil {
+		if err := CM.Store.Get(CACHE_PREFIX+ce.Key, cc.requestPath, &cache); err == nil {
 			if CM.AddCacheInfo {
+				cache.Header.Set("X-Cache-Key", cc.requestPath)
 				cache.Header.Set("Cache-Control", "max-age="+strconv.Itoa(int(cache.Ttl.Seconds()))+";must-revalidate")
 			}
-			cache.Write(c.Writer)
+			(&cache).Write(c.Writer)
 			c.Abort()
 			return
 		}
+
+		if !ce.Single {
+			// replace writer
+			c.Writer = newCachedWriter(c.Writer, CM.Store, cc)
+			c.Next()
+			return
+		}
+
 		val, _ := CM.group.Do(cc.requestPath, func() (interface{}, error) {
+			defer func() {
+				c.Set("cacheIsWrite", true)
+			}()
 			// replace writer
 			c.Writer = newCachedWriter(c.Writer, CM.Store, cc)
 			c.Next()
 			responseCache, _ := c.Get("ResponseCache")
 			return responseCache.(*store.ResponseCache), nil
 		})
-		val.(*store.ResponseCache).Write(c.Writer)
+		if !c.GetBool("cacheIsWrite") {
+			val.(*store.ResponseCache).Write(c.Writer)
+		}
 		c.Abort()
 		return
 	}
