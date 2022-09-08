@@ -42,13 +42,13 @@ func NewRedisStoreDefault(conf *RedisConf) *RedisStore {
 	return NewRedisStore(opt)
 }
 
-func (c *RedisStore) Set(key string, k string, val *ResponseCache, expires time.Duration) error {
+func (c *RedisStore) Set(key string, k string, val *ResponseCache, ttl time.Duration) error {
 	v, err := json.Marshal(val)
 	if err != nil {
 		return err
 	}
 	_, err = c.Client.HSet(key, k, v).Result()
-	_, err = c.Client.Expire(key, expires).Result()
+	_, err = c.Client.Expire(key, ttl).Result()
 	return err
 }
 

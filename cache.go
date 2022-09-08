@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/janartist/api-cache/store"
 	"io"
+	"log"
 	"net/url"
 	"strconv"
 	"time"
@@ -19,19 +20,20 @@ const (
 
 var CM *CacheManager
 
-func New(c CacheStore, eh bool) *CacheManager {
-	cm := &CacheManager{c, eh}
+func New(c CacheStore, group *Group, eh bool) *CacheManager {
+	cm := &CacheManager{c, group, eh}
 	CM = cm
 	return cm
 }
 func NewDefault(conf *store.RedisConf) *CacheManager {
-	cache := New(store.NewRedisStoreDefault(conf), true)
+	cache := New(store.NewRedisStoreDefault(conf), &Group{}, true)
 	return cache
 }
 
 type CacheManager struct {
 	Store        CacheStore
-	EnableHeader bool
+	group        *Group
+	AddCacheInfo bool
 }
 
 type CacheStore interface {
@@ -56,6 +58,7 @@ func Ttl(ttl time.Duration) CeOpt {
 }
 
 type CacheContext struct {
+	*gin.Context
 	*Cache
 	requestPath string
 }
@@ -78,31 +81,30 @@ func CacheFunc(co ...CeOpt) gin.HandlerFunc {
 		ce.Ttl = DEFAULT_EXPIRE
 	}
 	return func(c *gin.Context) {
-		var cache store.ResponseCache
+		var cache *store.ResponseCache
 		if ce.Key == "" {
 			ce.Key = c.Request.URL.Path
 		}
-		cc := &CacheContext{ce, urlEscape("", c.Request.RequestURI)}
-		c.Set("CacheContext", cc)
-		//cache get
-		if err := CM.Store.Get(CACHE_PREFIX+ce.Key, cc.requestPath, &cache); err == nil {
-			c.Writer.WriteHeader(cache.Status)
-			for k, val := range cache.Header {
-				for _, v := range val {
-					c.Writer.Header().Add(k, v)
-				}
+		cc := &CacheContext{c, ce, urlEscape("", c.Request.RequestURI)}
+		//from cache
+		if err := CM.Store.Get(CACHE_PREFIX+ce.Key, cc.requestPath, cache); err == nil {
+			if CM.AddCacheInfo {
+				cache.Header.Set("Cache-Control", "max-age="+strconv.Itoa(int(cache.Ttl.Seconds()))+";must-revalidate")
 			}
-			if CM.EnableHeader {
-				c.Writer.Header().Set("Cache-Control", "max-age="+strconv.Itoa(int(cache.Ttl.Seconds()))+";must-revalidate")
-			}
-
-			_, _ = c.Writer.Write(cache.Data)
+			cache.Write(c.Writer)
 			c.Abort()
 			return
 		}
-		// replace writer
-		c.Writer = newCachedWriter(c.Writer, CM.Store, cc)
-		c.Next()
+		val, _ := CM.group.Do(cc.requestPath, func() (interface{}, error) {
+			// replace writer
+			c.Writer = newCachedWriter(c.Writer, CM.Store, cc)
+			c.Next()
+			responseCache, _ := c.Get("ResponseCache")
+			return responseCache.(*store.ResponseCache), nil
+		})
+		val.(*store.ResponseCache).Write(c.Writer)
+		c.Abort()
+		return
 	}
 }
 
@@ -128,8 +130,9 @@ func (w *cachedWriter) Write(data []byte) (int, error) {
 		}
 		err = w.store.Set(CACHE_PREFIX+w.cc.Key, w.cc.requestPath, val, w.cc.Ttl)
 		if err != nil {
-			// need logger
+			log.Printf("cache store set err:%v", err)
 		}
+		w.cc.Context.Set("ResponseCache", val)
 	}
 	return ret, err
 }
