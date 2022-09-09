@@ -42,13 +42,32 @@ func (c *redisStore) Set(key string, k string, val *ResponseCache, ttl time.Dura
 	if err != nil {
 		return err
 	}
-	_, err = c.Client.HSet(key, k, v).Result()
-	_, err = c.Client.Expire(key, ttl).Result()
+	_, err = c.Client.TxPipelined(func(pipeline redis.Pipeliner) error {
+		_, err = pipeline.HSet(key, k, v).Result()
+		if ttl > 0 {
+			_, err = pipeline.Expire(key, ttl).Result()
+		}
+		return err
+	})
 	return err
 }
 
 func (c *redisStore) Get(key string, k string, val *ResponseCache) error {
-	r, err := c.Client.HGet(key, k).Result()
+	var r string
+	var p time.Duration
+	_, err := c.Client.TxPipelined(func(pipeline redis.Pipeliner) error {
+		pr, err := pipeline.HGet(key, k).Result()
+		if err != nil {
+			return err
+		}
+		pe, err := c.Client.TTL(key).Result()
+		if err != nil {
+			return err
+		}
+		r = pr
+		p = pe
+		return nil
+	})
 	if err != nil {
 		return err
 	}
@@ -56,11 +75,7 @@ func (c *redisStore) Get(key string, k string, val *ResponseCache) error {
 	if err != nil {
 		return err
 	}
-	e, err := c.Client.TTL(key).Result()
-	if err != nil {
-		return err
-	}
-	val.Expire = e
+	val.Expire = p
 	return nil
 }
 

@@ -67,7 +67,7 @@ func TestCacheWithRedis(t *testing.T) {
 
 	for i := 0; i < 50; i++ {
 		o := <-outp
-		if o != "test" {
+		if o != "test-res" {
 			t.Errorf("[/test] err is %s", o)
 		}
 		oc := <-outpCache

@@ -73,7 +73,7 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 		if ce.KMap != nil {
 			ce.Key = ce.Key + makeMapSortToString(ce.KMap)
 		}
-		cc := &CacheContext{c, m, ce, c.Request.RequestURI}
+		cc := &CacheContext{c, m, ce, urlEscape("", c.Request.RequestURI)}
 		//from cache
 		if err := m.Store.Get(CachePrefix+ce.Key, cc.requestPath, &cache); err == nil {
 			if m.AddCacheHeader {
