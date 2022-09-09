@@ -65,7 +65,7 @@ func (c *redisStore) Get(key string, k string, val *ResponseCache) error {
 	if err != nil {
 		return err
 	}
-	val.Ttl = e
+	val.Expire = e
 	return nil
 }
 

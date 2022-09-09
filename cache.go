@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/url"
 	"sort"
-	"strconv"
 	"time"
 )
 
@@ -18,9 +17,14 @@ const (
 	ForeverExpire           = time.Duration(-1)
 	CachePrefix             = "url_data_cache:"
 	ResponseCacheContextKey = "responseCache"
-
+)
+const (
 	SuccessEnableMode Mode = iota + 1
 	ALLEnableMode
+)
+const (
+	CacheSource Source = iota + 1
+	LocalSource
 )
 
 func New(c CacheStore, group *Group, ac bool, mode Mode) *CacheManager {
@@ -62,6 +66,7 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 	}
 	return func(c *gin.Context) {
 		var cache store.ResponseCache
+		cache.Header = make(map[string][]string)
 		if ce.Key == "" {
 			ce.Key = c.Request.URL.Path
 		}
@@ -72,8 +77,7 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 		//from cache
 		if err := m.Store.Get(CachePrefix+ce.Key, cc.requestPath, &cache); err == nil {
 			if m.AddCacheHeader {
-				cache.Header.Set("X-Cache-Key", cc.requestPath)
-				cache.Header.Set("Cache-Control", "max-age="+strconv.Itoa(int(cache.Ttl.Seconds()))+";must-revalidate")
+				cache.AddCacheHeader(cc.requestPath, int8(CacheSource))
 			}
 			(&cache).Write(c.Writer)
 			c.Abort()
@@ -99,11 +103,15 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 					log.Printf("cache store set err:%v", err)
 				}
 			}
+			if m.AddCacheHeader {
+				responseCache.AddCacheHeader(cc.requestPath, int8(LocalSource))
+			}
 			return responseCache, nil
 		})
 		//此处未执行上诉Do方法时的逻辑
 		if !isWrite {
-			val.(*store.ResponseCache).Write(c.Writer)
+			v := val.(*store.ResponseCache)
+			v.Write(c.Writer)
 		}
 		c.Abort()
 		return
@@ -111,6 +119,7 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 }
 
 type Mode int8
+type Source int8
 
 type CacheManager struct {
 	Store          CacheStore

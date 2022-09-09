@@ -20,7 +20,7 @@ func route(m *apicache.CacheManager) *gin.Engine {
 		fmt.Print("[/test-cache-second] DB select ...\n")
 		c.String(200, "test-cache-second-res")
 	})
-	r.GET("/test-cache-second-single", apicache.CacheFunc(m, apicache.Ttl(time.Second), apicache.Single(true)), func(c *gin.Context) {
+	r.GET("/test-cache-second-single", apicache.CacheFunc(m, apicache.Ttl(time.Minute), apicache.Single(true)), func(c *gin.Context) {
 		time.Sleep(time.Second)
 		fmt.Print("[/test-cache-second-single] DB select ...\n")
 		c.String(200, "test-cache-second-single-res")

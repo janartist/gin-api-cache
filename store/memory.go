@@ -39,14 +39,14 @@ func (c *memoryStore) Set(key string, k string, val *ResponseCache, ttl time.Dur
 	return nil
 }
 func (c *memoryStore) Get(key string, k string, val *ResponseCache) (err error) {
-
 	c.Lock()
 	defer func() {
 		c.Unlock()
 	}()
 	if i, ok := c.items[key][k]; ok {
 		if !i.isExpired() {
-			val = &i.value
+			*val = i.value
+			val.Expire = i.expireTime.Sub(time.Now())
 			return
 		}
 		delete(c.items[key], k)
