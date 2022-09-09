@@ -34,7 +34,7 @@ func main()  {
 	})
 	route(m)
 }
-func route(m *apicache.CacheManager) *gin.Engine {
+func route(m *apicache.CacheManager) {
 	app := gin.Default()
 	app.GET("/test-cache-second", apicache.CacheFunc(m, apicache.Ttl(time.Second), apicache.Single(true)), func(c *gin.Context) {
 		time.Sleep(time.Second)
