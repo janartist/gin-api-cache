@@ -20,7 +20,9 @@ func route(m *apicache.CacheManager) *gin.Engine {
 		fmt.Print("[/test-cache-second] DB select ...\n")
 		c.String(200, "test-cache-second-res")
 	})
-	r.GET("/test-cache-second-single", apicache.CacheFunc(m, apicache.Ttl(time.Minute), apicache.Single(true)), func(c *gin.Context) {
+	r.GET("/test-cache-second-single", func(context *gin.Context) {
+		context.Set("uid", "1")
+	}, cacheFuncByUid(m, apicache.Ttl(time.Minute), apicache.Single(true)), func(c *gin.Context) {
 		time.Sleep(time.Second)
 		fmt.Print("[/test-cache-second-single] DB select ...\n")
 		c.String(200, "test-cache-second-single-res")
@@ -39,5 +41,14 @@ func Run(m *apicache.CacheManager) {
 	err := route(m).Run()
 	if err != nil {
 		return
+	}
+}
+
+//添加用户ID到key
+func cacheFuncByUid(m *apicache.CacheManager, co ...apicache.CeOpt) gin.HandlerFunc {
+	return func(context *gin.Context) {
+		uid := context.MustGet("uid").(string)
+		co = append(co, apicache.KMap(map[string]string{"uid": uid}))
+		apicache.CacheFunc(m, co...)(context)
 	}
 }
