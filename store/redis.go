@@ -1,7 +1,6 @@
 package store
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/go-redis/redis/v7"
@@ -27,11 +26,7 @@ func NewRedisStore(opt *redis.Options) *redisStore {
 	return &redisStore{client}
 }
 func NewRedisStoreDefault(conf *RedisConf) *redisStore {
-	auth, err := base64.StdEncoding.DecodeString(conf.Auth)
-	if err != nil {
-		panic(err)
-	}
-	opt, err := redis.ParseURL(fmt.Sprintf("redis://:%s@%s/%d", auth, conf.Addr, conf.DB))
+	opt, err := redis.ParseURL(fmt.Sprintf("redis://:%s@%s/%d", conf.Auth, conf.Addr, conf.DB))
 	if err != nil {
 		panic(err)
 	}
