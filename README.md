@@ -1,5 +1,10 @@
-## Gin middleware/handler to enable Cache.
+## Gin middleware/handler to enable Cache
 
-- reference [https://github.com/gin-contrib/cache](gin-contrib/cache)
+### 用于缓存http接口内容的gin高性能中间件
 
-In development..
+- 得益于简单singleflight解决缓存击穿问题，优于官方 [gin-contrib/cache](https://github.com/gin-contrib/cache)
+- 支持redis（适合集群）及memory（适合单机）驱动
+- 支持自定key(默认route) 及参数k(默认requestPath)
+- 使用hash数据结构来解决同个接口的数据组批量维护的问题
+- 使用过期时间加删除缓存策略（不覆盖）
+- 仅缓存http状态码为2xx的回包

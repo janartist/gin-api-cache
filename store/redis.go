@@ -14,19 +14,19 @@ type RedisConf struct {
 	DB   int    `yaml:"db"`
 }
 
-type RedisStore struct {
+type redisStore struct {
 	*redis.Client
 }
 
-func NewRedisStore(opt *redis.Options) *RedisStore {
+func NewRedisStore(opt *redis.Options) *redisStore {
 	client := redis.NewClient(opt)
 	result, err := client.Ping().Result()
 	if err != nil || result != "PONG" {
 		panic(err)
 	}
-	return &RedisStore{client}
+	return &redisStore{client}
 }
-func NewRedisStoreDefault(conf *RedisConf) *RedisStore {
+func NewRedisStoreDefault(conf *RedisConf) *redisStore {
 	auth, err := base64.StdEncoding.DecodeString(conf.Auth)
 	if err != nil {
 		panic(err)
@@ -42,7 +42,7 @@ func NewRedisStoreDefault(conf *RedisConf) *RedisStore {
 	return NewRedisStore(opt)
 }
 
-func (c *RedisStore) Set(key string, k string, val *ResponseCache, ttl time.Duration) error {
+func (c *redisStore) Set(key string, k string, val *ResponseCache, ttl time.Duration) error {
 	v, err := json.Marshal(val)
 	if err != nil {
 		return err
@@ -52,7 +52,7 @@ func (c *RedisStore) Set(key string, k string, val *ResponseCache, ttl time.Dura
 	return err
 }
 
-func (c *RedisStore) Get(key string, k string, val *ResponseCache) error {
+func (c *redisStore) Get(key string, k string, val *ResponseCache) error {
 	r, err := c.Client.HGet(key, k).Result()
 	if err != nil {
 		return err
@@ -69,7 +69,7 @@ func (c *RedisStore) Get(key string, k string, val *ResponseCache) error {
 	return nil
 }
 
-func (c *RedisStore) Remove(key string) error {
+func (c *redisStore) Remove(key string) error {
 	_, err := c.Client.Del(key).Result()
 	return err
 }

@@ -13,8 +13,8 @@ func performRequest(method, target string, router *gin.Engine) *httptest.Respons
 	return w
 }
 
-func TestCacheSecond(t *testing.T) {
-	r := route()
+func TestCacheWithRedis(t *testing.T) {
+	r := RunWithMemory()
 	//r.Run()
 	outp := make(chan string, 50)
 	outpCache := make(chan string, 50)
