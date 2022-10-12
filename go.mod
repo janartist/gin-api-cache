@@ -1,4 +1,4 @@
-module github.com/janartist/api-cache
+module github.com/janartist/gin-api-cache
 
 go 1.17
 

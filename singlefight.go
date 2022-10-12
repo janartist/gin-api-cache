@@ -1,4 +1,4 @@
-package api_cache
+package gin_api_cache
 
 import "sync"
 

@@ -3,7 +3,7 @@ package example
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
-	apicache "github.com/janartist/api-cache"
+	apicache "github.com/janartist/gin-api-cache"
 	"net/http"
 	"time"
 )

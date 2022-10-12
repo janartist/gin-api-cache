@@ -2,8 +2,8 @@ package example
 
 import (
 	"github.com/gin-gonic/gin"
-	apicache "github.com/janartist/api-cache"
-	"github.com/janartist/api-cache/store"
+	apicache "github.com/janartist/gin-api-cache"
+	"github.com/janartist/gin-api-cache/store"
 )
 
 func RunWithRedis() *gin.Engine {

@@ -1,10 +1,10 @@
-package api_cache
+package gin_api_cache
 
 import (
 	"bytes"
 	"crypto/sha1"
 	"github.com/gin-gonic/gin"
-	"github.com/janartist/api-cache/store"
+	"github.com/janartist/gin-api-cache/store"
 	"io"
 	"log"
 	"net/url"
