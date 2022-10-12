@@ -65,6 +65,7 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 		ce.Ttl = DefaultExpire
 	}
 	return func(c *gin.Context) {
+		ce := &*ce
 		var cache store.ResponseCache
 		cache.Header = make(map[string][]string)
 		if ce.Key == "" {
@@ -73,7 +74,9 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 		if ce.KMap != nil {
 			ce.Key = ce.Key + makeMapSortToString(ce.KMap)
 		}
-		cc := &CacheContext{c, m, ce, urlEscape("", c.Request.RequestURI)}
+
+		cc := &CacheContext{c, m, ce, c.Request.RequestURI}
+
 		//from cache
 		if err := m.Store.Get(CachePrefix+ce.Key, cc.requestPath, &cache); err == nil {
 			if m.AddCacheHeader {

@@ -43,9 +43,10 @@ func (c *redisStore) Set(key string, k string, val *ResponseCache, ttl time.Dura
 		return err
 	}
 	_, err = c.Client.TxPipelined(func(pipeline redis.Pipeliner) error {
-		_, err = pipeline.HSet(key, k, v).Result()
-		if ttl > 0 {
-			_, err = pipeline.Expire(key, ttl).Result()
+		err := pipeline.HSet(key, k, v).Err()
+		er2 := pipeline.Expire(key, ttl).Err()
+		if er2 != nil {
+			err = er2
 		}
 		return err
 	})
@@ -53,29 +54,26 @@ func (c *redisStore) Set(key string, k string, val *ResponseCache, ttl time.Dura
 }
 
 func (c *redisStore) Get(key string, k string, val *ResponseCache) error {
-	var r string
-	var p time.Duration
-	_, err := c.Client.TxPipelined(func(pipeline redis.Pipeliner) error {
-		pr, err := pipeline.HGet(key, k).Result()
-		if err != nil {
-			return err
+	res, err := c.Client.TxPipelined(func(pipeline redis.Pipeliner) error {
+		err := pipeline.HGet(key, k).Err()
+		er2 := pipeline.TTL(key).Err()
+		if er2 != nil {
+			err = er2
 		}
-		pe, err := c.Client.TTL(key).Result()
-		if err != nil {
-			return err
-		}
-		r = pr
-		p = pe
-		return nil
+		return err
 	})
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal([]byte(r), val)
+	r, err := (res[0]).(*redis.StringCmd).Bytes()
 	if err != nil {
 		return err
 	}
-	val.Expire = p
+	err = json.Unmarshal(r, val)
+	if err != nil {
+		return err
+	}
+	val.Expire = (res[1]).(*redis.DurationCmd).Val()
 	return nil
 }
 

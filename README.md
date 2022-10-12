@@ -1,4 +1,4 @@
-## Gin middleware/handler to enable Cache
+~~## Gin middleware/handler to enable Cache
 
 ### 用于缓存http接口内容的gin高性能中间件
 
