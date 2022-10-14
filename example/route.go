@@ -15,16 +15,13 @@ func route(m *apicache.CacheManager) *gin.Engine {
 		fmt.Print("[/test-cache] DB select ...\n")
 		c.String(200, "test-res")
 	})
-	r.GET("/test-cache-second", apicache.CacheFunc(m, apicache.Ttl(time.Second), apicache.Single(false)), func(c *gin.Context) {
+	r.GET("/test-cache-second", apicache.CacheFunc(m, apicache.Ttl(time.Minute), apicache.Single(false)), func(c *gin.Context) {
 		time.Sleep(time.Second)
 		fmt.Print("[/test-cache-second] DB select ...\n")
 		c.String(200, "test-cache-second-res")
 	})
-	r.GET("/test-cache-second-single", func(context *gin.Context) {
-		//此处模拟JWT解析uid
-		context.Set("uid", "1")
-	}, cacheFuncByUid(m, apicache.Ttl(time.Minute), apicache.Single(true)), func(c *gin.Context) {
-		time.Sleep(time.Second)
+	r.GET("/test-cache-second-single", apicache.CacheFunc(m, apicache.Ttl(time.Second), apicache.Single(true)), func(c *gin.Context) {
+		time.Sleep(time.Second * 2)
 		fmt.Print("[/test-cache-second-single] DB select ...\n")
 		c.String(200, "test-cache-second-single-res")
 	})

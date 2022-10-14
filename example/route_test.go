@@ -1,6 +1,7 @@
 package example
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"net/http/httptest"
 	"testing"
@@ -19,7 +20,7 @@ func performRequest(method, target string, router *gin.Engine) *httptest.Respons
 	return w
 }
 func BenchmarkNoCache(b *testing.B) {
-	for n := 0; n < b.N; n++ {
+	for i := 0; i < b.N; i++ {
 		resp := performRequest("GET", "/test", engine)
 		if resp.Body.String() != "test-res" {
 			b.Errorf("[/test] err is %s", resp.Body.String())
@@ -27,7 +28,7 @@ func BenchmarkNoCache(b *testing.B) {
 	}
 }
 func BenchmarkCache(b *testing.B) {
-	for n := 0; n < b.N; n++ {
+	for i := 0; i < b.N; i++ {
 		resp := performRequest("GET", "/test-cache-second", engine)
 		if resp.Body.String() != "test-cache-second-res" {
 			b.Errorf("[/test] err is %s", resp.Body.String())
@@ -35,8 +36,14 @@ func BenchmarkCache(b *testing.B) {
 	}
 }
 func BenchmarkCacheWithSingle(b *testing.B) {
-	for n := 0; n < b.N; n++ {
+	for i := 0; i < b.N; i++ {
 		resp := performRequest("GET", "/test-cache-second-single", engine)
+		source := resp.Header().Get("x-cache-source")
+		if source != "" {
+			fmt.Printf("x-cache-source-%s \n", source)
+		} else {
+			fmt.Print("no x-cache-source \n")
+		}
 		if resp.Body.String() != "test-cache-second-single-res" {
 			b.Errorf("[/test] err is %s", resp.Body.String())
 		}
