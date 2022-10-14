@@ -12,7 +12,7 @@
 
 ### 击穿逻辑
 
-![击穿逻辑](./cache.jpg)
+![](./cache.jpg)
 
 ### Quick start
 

@@ -36,18 +36,21 @@ func BenchmarkCache(b *testing.B) {
 	}
 }
 func BenchmarkCacheWithSingle(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		resp := performRequest("GET", "/test-cache-second-single", engine)
-		source := resp.Header().Get("x-cache-source")
-		if source != "" {
-			fmt.Printf("x-cache-source-%s \n", source)
-		} else {
-			fmt.Print("no x-cache-source \n")
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			resp := performRequest("GET", "/test-cache-second-single", engine)
+			source := resp.Header().Get("x-cache-source")
+			if source != "" {
+				fmt.Printf("x-cache-source-%s \n", source)
+			} else {
+				fmt.Print("x-cache-source-no \n")
+			}
+			if resp.Body.String() != "test-cache-second-single-res" {
+				b.Errorf("[/test] err is %s", resp.Body.String())
+			}
 		}
-		if resp.Body.String() != "test-cache-second-single-res" {
-			b.Errorf("[/test] err is %s", resp.Body.String())
-		}
-	}
+	})
 }
 func TestCacheWithRedis(t *testing.T) {
 	//r.Run()

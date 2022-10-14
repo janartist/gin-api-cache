@@ -8,7 +8,7 @@ import (
 
 func RunWithRedis() *gin.Engine {
 	m := apicache.NewDefault(&store.RedisConf{
-		Addr: "127.0.0.1:6379",
+		Addr: "10.1.2.7:6379",
 		Auth: "",
 		DB:   0,
 	})
