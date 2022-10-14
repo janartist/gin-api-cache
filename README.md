@@ -12,7 +12,7 @@
 
 ### 击穿逻辑
 
-![](./cache.jpg)
+![](https://github.com/janartist/gin-api-cache/blob/main/cache.jpg)
 
 ### Quick start
 
