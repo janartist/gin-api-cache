@@ -14,6 +14,7 @@ func init() {
 }
 
 func performRequest(method, target string, router *gin.Engine) *httptest.ResponseRecorder {
+	//router.Run(":8080")
 	r := httptest.NewRequest(method, target, nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, r)
@@ -53,7 +54,6 @@ func BenchmarkCacheWithSingle(b *testing.B) {
 	})
 }
 func TestCacheWithRedis(t *testing.T) {
-	//r.Run()
 	outp := make(chan string, 50)
 	outpCache := make(chan string, 50)
 	outpCacheSingle := make(chan string, 50)

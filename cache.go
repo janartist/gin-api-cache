@@ -66,7 +66,7 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 	}
 	return func(c *gin.Context) {
 		ce := &*ce
-		var cache store.ResponseCache
+		cache := &store.ResponseCache{}
 		cache.Header = make(map[string][]string)
 		if ce.Key == "" {
 			ce.Key = c.Request.URL.Path
@@ -78,11 +78,11 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 		cc := &CacheContext{c, m, ce, c.Request.RequestURI}
 
 		//from cache
-		if err := m.Store.Get(CachePrefix+ce.Key, cc.requestPath, &cache); err == nil {
+		if err := m.Store.Get(CachePrefix+cc.Cache.Key, cc.requestPath, cache); err == nil {
 			if m.AddCacheHeader {
 				cache.AddCacheHeader(cc.requestPath, int8(CacheSource))
 			}
-			(&cache).Write(c.Writer)
+			cache.Write(c.Writer)
 			c.Abort()
 			return
 		}
@@ -94,26 +94,31 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 		}
 		isWrite := false
 		val, _ := m.group.Do(cc.requestPath, func() (interface{}, error) {
-			isWrite = true
-			// replace writer
-			c.Writer = newCacheWriter(c.Writer, cc)
-			//此处Next()应执行业务逻辑,执行完后response应写入完毕
-			c.Next()
-			cFromContext, _ := c.Get(ResponseCacheContextKey)
-			responseCache := cFromContext.(*store.ResponseCache)
-			if m.Mode == ALLEnableMode || (responseCache.Status < 300 && responseCache.Status >= 200) {
-				if err := m.Store.Set(CachePrefix+ce.Key, cc.requestPath, responseCache, ce.Ttl); err != nil {
-					log.Printf("cache store set err:%v", err)
+			doFunc := func() (interface{}, error) {
+				isWrite = true
+				// replace writer, add set context ResponseCacheContextKey
+				c.Writer = newCacheWriter(c.Writer, cc)
+				//此处Next()应执行业务逻辑,执行完后response应写入完毕
+				c.Next()
+				//get context ResponseCacheContextKey read response
+				cFromContext, _ := c.Get(ResponseCacheContextKey)
+				responseCache := cFromContext.(*store.ResponseCache)
+				if m.Mode == ALLEnableMode || (responseCache.Status < 300 && responseCache.Status >= 200) {
+					if err := m.Store.Set(CachePrefix+ce.Key, cc.requestPath, responseCache, ce.Ttl); err != nil {
+						log.Printf("cache store set err:%v", err)
+					}
 				}
+				if m.AddCacheHeader {
+					responseCache.AddCacheHeader(cc.requestPath, int8(LocalSource))
+				}
+				return responseCache, nil
 			}
-			if m.AddCacheHeader {
-				responseCache.AddCacheHeader(cc.requestPath, int8(LocalSource))
-			}
-			return responseCache, nil
+			//TODO add MutexLock
+			return doFunc()
 		})
-		//此处未执行上诉Do方法时的逻辑
+		//from localCache
 		if !isWrite {
-			v := val.(*store.ResponseCache)
+			v := *val.(*store.ResponseCache)
 			v.Write(c.Writer)
 		}
 		c.Abort()
