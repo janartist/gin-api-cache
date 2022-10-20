@@ -30,6 +30,7 @@ func (g *Group) Do(key string, fn func() (interface{}, error)) (interface{}, err
 		c.wg.Wait()
 		return c.val, c.err
 	}
+
 	c := new(call)
 	c.wg.Add(1)
 	g.m[key] = c

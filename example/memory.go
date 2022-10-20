@@ -7,6 +7,6 @@ import (
 )
 
 func RunWithMemory() *gin.Engine {
-	m := apicache.New(store.NewMemoryStore(), &apicache.Group{}, true, apicache.SuccessEnableMode)
+	m := apicache.New(store.NewMemoryStore(), &apicache.Group{}, true, apicache.SuccessEnableMode, nil)
 	return route(m)
 }

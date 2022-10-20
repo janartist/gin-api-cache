@@ -7,6 +7,7 @@ import (
 	"github.com/janartist/gin-api-cache/store"
 	"io"
 	"log"
+	"net/http"
 	"net/url"
 	"sort"
 	"time"
@@ -21,17 +22,21 @@ const (
 const (
 	SuccessEnableMode Mode = iota + 1
 	ALLEnableMode
+	CustomEnableMode
 )
 const (
 	CacheSource Source = iota + 1
 	LocalSource
 )
+const (
+	maxConcurrencyDefault = 100000
+)
 
-func New(c CacheStore, group *Group, ac bool, mode Mode) *CacheManager {
-	return &CacheManager{c, group, ac, mode}
+func New(c CacheStore, group *Group, ac bool, mode Mode, fn func(*store.ResponseCache) bool) *CacheManager {
+	return &CacheManager{c, group, ac, mode, fn}
 }
 func NewDefault(conf *store.RedisConf) *CacheManager {
-	cache := New(store.NewRedisStoreDefault(conf), &Group{}, true, SuccessEnableMode)
+	cache := New(store.NewRedisStoreDefault(conf), &Group{}, true, SuccessEnableMode, nil)
 	return cache
 }
 
@@ -49,7 +54,9 @@ func Ttl(ttl time.Duration) CeOpt {
 func Single(s bool) CeOpt {
 	return func(c *Cache) { c.Single = s }
 }
-
+func MaxConcurrency(maxConcurrency int64) CeOpt {
+	return func(c *Cache) { c.C = make(chan struct{}, maxConcurrency) }
+}
 func Remove(m *CacheManager, key string) error {
 	err := m.Store.Remove(CachePrefix + key)
 	return err
@@ -57,7 +64,7 @@ func Remove(m *CacheManager, key string) error {
 
 // CacheFunc Cache Decorator
 func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
-	ce := &Cache{Single: true}
+	ce := &Cache{Single: true, C: make(chan struct{}, maxConcurrencyDefault)}
 	for _, c := range co {
 		c(ce)
 	}
@@ -66,6 +73,10 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 	}
 	return func(c *gin.Context) {
 		ce := &*ce
+		ce.C <- struct{}{}
+		defer func() {
+			<-ce.C
+		}()
 		cache := &store.ResponseCache{}
 		cache.Header = make(map[string][]string)
 		if ce.Key == "" {
@@ -103,7 +114,7 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 				//get context ResponseCacheContextKey read response
 				cFromContext, _ := c.Get(ResponseCacheContextKey)
 				responseCache := cFromContext.(*store.ResponseCache)
-				if m.Mode == ALLEnableMode || (responseCache.Status < 300 && responseCache.Status >= 200) {
+				if m.IsOK(responseCache) {
 					if err := m.Store.Set(CachePrefix+ce.Key, cc.requestPath, responseCache, ce.Ttl); err != nil {
 						log.Printf("cache store set err:%v", err)
 					}
@@ -130,10 +141,25 @@ type Mode int8
 type Source int8
 
 type CacheManager struct {
-	Store          CacheStore
-	group          *Group
-	AddCacheHeader bool
-	Mode           Mode
+	Store                CacheStore
+	group                *Group
+	AddCacheHeader       bool
+	Mode                 Mode
+	CustomEnableModeFunc func(*store.ResponseCache) bool
+}
+
+// IsOK 是否OK需要缓存
+func (m *CacheManager) IsOK(c *store.ResponseCache) bool {
+	if m.Mode == ALLEnableMode {
+		return true
+	}
+	if m.Mode == SuccessEnableMode {
+		return c.Status < http.StatusMultipleChoices && c.Status >= http.StatusOK
+	}
+	if m.Mode == CustomEnableMode && m.CustomEnableModeFunc != nil {
+		return m.CustomEnableModeFunc(c)
+	}
+	return false
 }
 
 type CacheStore interface {
@@ -150,6 +176,7 @@ type Cache struct {
 	KMap   map[string]string
 	Ttl    time.Duration
 	Single bool
+	C      chan struct{}
 }
 
 type CacheContext struct {

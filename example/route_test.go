@@ -37,6 +37,8 @@ func BenchmarkCache(b *testing.B) {
 	}
 }
 func BenchmarkCacheWithSingle(b *testing.B) {
+	b.SetParallelism(25000)
+	b.N = 25000
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
