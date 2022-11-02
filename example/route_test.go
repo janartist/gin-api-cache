@@ -50,7 +50,7 @@ func BenchmarkCacheWithSingle(b *testing.B) {
 				fmt.Print("x-cache-source-no \n")
 			}
 			if resp.Body.String() != "test-cache-second-single-res" {
-				b.Errorf("[/test] err is %s", resp.Body.String())
+				b.Errorf("[/test] err is %s %v", resp.Body.String(), resp)
 			}
 		}
 	})

@@ -13,19 +13,19 @@ type RedisConf struct {
 	DB   int    `yaml:"db"`
 }
 
-type redisStore struct {
+type RedisStore struct {
 	*redis.Client
 }
 
-func NewRedisStore(opt *redis.Options) *redisStore {
+func NewRedisStore(opt *redis.Options) *RedisStore {
 	client := redis.NewClient(opt)
 	result, err := client.Ping().Result()
 	if err != nil || result != "PONG" {
 		panic(err)
 	}
-	return &redisStore{client}
+	return &RedisStore{client}
 }
-func NewRedisStoreDefault(conf *RedisConf) *redisStore {
+func NewRedisStoreDefault(conf *RedisConf) *RedisStore {
 	opt, err := redis.ParseURL(fmt.Sprintf("redis://:%s@%s/%d", conf.Auth, conf.Addr, conf.DB))
 	if err != nil {
 		panic(err)
@@ -37,7 +37,7 @@ func NewRedisStoreDefault(conf *RedisConf) *redisStore {
 	return NewRedisStore(opt)
 }
 
-func (c *redisStore) Set(key string, k string, val *ResponseCache, ttl time.Duration) error {
+func (c *RedisStore) Set(key string, k string, val *ResponseCache, ttl time.Duration) error {
 	v, err := json.Marshal(val)
 	if err != nil {
 		return err
@@ -53,7 +53,7 @@ func (c *redisStore) Set(key string, k string, val *ResponseCache, ttl time.Dura
 	return err
 }
 
-func (c *redisStore) Get(key string, k string, val *ResponseCache) error {
+func (c *RedisStore) Get(key string, k string, val *ResponseCache) error {
 	res, err := c.Client.TxPipelined(func(pipeline redis.Pipeliner) error {
 		err := pipeline.HGet(key, k).Err()
 		er2 := pipeline.TTL(key).Err()
@@ -77,7 +77,7 @@ func (c *redisStore) Get(key string, k string, val *ResponseCache) error {
 	return nil
 }
 
-func (c *redisStore) Remove(key string) error {
+func (c *RedisStore) Remove(key string) error {
 	_, err := c.Client.Del(key).Result()
 	return err
 }

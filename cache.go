@@ -3,6 +3,7 @@ package gin_api_cache
 import (
 	"bytes"
 	"crypto/sha1"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/janartist/gin-api-cache/store"
 	"io"
@@ -28,8 +29,9 @@ const (
 	CacheSource Source = iota + 1
 	LocalSource
 )
-const (
-	maxConcurrencyDefault = 100000
+
+var (
+	responseCacheNotFoundError = fmt.Errorf("responseCache notFound")
 )
 
 func New(c CacheStore, group *Group, ac bool, mode Mode, fn func(*store.ResponseCache) bool) *CacheManager {
@@ -54,9 +56,6 @@ func Ttl(ttl time.Duration) CeOpt {
 func Single(s bool) CeOpt {
 	return func(c *Cache) { c.Single = s }
 }
-func MaxConcurrency(maxConcurrency int64) CeOpt {
-	return func(c *Cache) { c.C = make(chan struct{}, maxConcurrency) }
-}
 func Remove(m *CacheManager, key string) error {
 	err := m.Store.Remove(CachePrefix + key)
 	return err
@@ -64,7 +63,7 @@ func Remove(m *CacheManager, key string) error {
 
 // CacheFunc Cache Decorator
 func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
-	ce := &Cache{Single: true, C: make(chan struct{}, maxConcurrencyDefault)}
+	ce := &Cache{Single: true}
 	for _, c := range co {
 		c(ce)
 	}
@@ -73,10 +72,6 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 	}
 	return func(c *gin.Context) {
 		ce := &*ce
-		ce.C <- struct{}{}
-		defer func() {
-			<-ce.C
-		}()
 		cache := &store.ResponseCache{}
 		cache.Header = make(map[string][]string)
 		if ce.Key == "" {
@@ -104,15 +99,20 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 			return
 		}
 		isWrite := false
-		val, _ := m.group.Do(cc.requestPath, func() (interface{}, error) {
+		val, err := m.group.Do(cc.requestPath, func() (interface{}, error) {
 			doFunc := func() (interface{}, error) {
-				isWrite = true
+				w := c.Writer
 				// replace writer, add set context ResponseCacheContextKey
 				c.Writer = newCacheWriter(c.Writer, cc)
-				//此处Next()应执行业务逻辑,执行完后response应写入完毕
+				//此处Next()应执行业务逻辑,执行完后response应写入完毕,或c.Writer被篡改
 				c.Next()
 				//get context ResponseCacheContextKey read response
-				cFromContext, _ := c.Get(ResponseCacheContextKey)
+				cFromContext, ok := c.Get(ResponseCacheContextKey)
+				if !ok {
+					return nil, responseCacheNotFoundError
+				}
+				isWrite = true
+				c.Writer = w
 				responseCache := cFromContext.(*store.ResponseCache)
 				if m.IsOK(responseCache) {
 					if err := m.Store.Set(CachePrefix+ce.Key, cc.requestPath, responseCache, ce.Ttl); err != nil {
@@ -128,8 +128,9 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 			return doFunc()
 		})
 		//from localCache
-		if !isWrite {
-			v := *val.(*store.ResponseCache)
+		//TODO err!=nil 500的处理
+		if !isWrite && err == nil {
+			v := val.(*store.ResponseCache)
 			v.Write(c.Writer)
 		}
 		c.Abort()
@@ -176,7 +177,6 @@ type Cache struct {
 	KMap   map[string]string
 	Ttl    time.Duration
 	Single bool
-	C      chan struct{}
 }
 
 type CacheContext struct {
