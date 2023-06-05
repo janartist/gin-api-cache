@@ -2,16 +2,15 @@ package gin_api_cache
 
 import (
 	"bytes"
-	"crypto/sha1"
+	"context"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/janartist/gin-api-cache/store"
-	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"sort"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/janartist/gin-api-cache/store"
 )
 
 const (
@@ -34,11 +33,11 @@ var (
 	responseCacheNotFoundError = fmt.Errorf("responseCache notFound")
 )
 
-func New(c CacheStore, group *Group, ac bool, mode Mode, fn func(*store.ResponseCache) bool) *CacheManager {
-	return &CacheManager{c, group, ac, mode, fn}
+func New(c CacheStore, ac bool, mode Mode, fn func(*store.ResponseCache) bool) *CacheManager {
+	return &CacheManager{c, &Group{}, ac, mode, fn}
 }
 func NewDefault(conf *store.RedisConf) *CacheManager {
-	cache := New(store.NewRedisStoreDefault(conf), &Group{}, true, SuccessEnableMode, nil)
+	cache := New(store.NewRedisStoreDefault(conf), true, SuccessEnableMode, nil)
 	return cache
 }
 
@@ -56,8 +55,8 @@ func Ttl(ttl time.Duration) CeOpt {
 func Single(s bool) CeOpt {
 	return func(c *Cache) { c.Single = s }
 }
-func Remove(m *CacheManager, key string) error {
-	err := m.Store.Remove(CachePrefix + key)
+func Remove(ctx context.Context, m *CacheManager, key string) error {
+	err := m.Store.Remove(ctx, CachePrefix+key)
 	return err
 }
 
@@ -71,20 +70,18 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 		ce.Ttl = DefaultExpire
 	}
 	return func(c *gin.Context) {
-		ce := &*ce
-		cache := &store.ResponseCache{}
-		cache.Header = make(map[string][]string)
-		if ce.Key == "" {
-			ce.Key = c.Request.URL.Path
+		ce2 := *ce
+		if ce2.Key == "" {
+			ce2.Key = c.Request.URL.Path
 		}
-		if ce.KMap != nil {
-			ce.Key = ce.Key + makeMapSortToString(ce.KMap)
+		if ce2.KMap != nil {
+			ce2.Key = ce2.Key + makeMapSortToString(ce2.KMap)
 		}
+		cc := &CacheContext{c, m, ce2, c.Request.RequestURI}
 
-		cc := &CacheContext{c, m, ce, c.Request.RequestURI}
-
+		cache := store.ResponseCache{Header: make(map[string][]string)}
 		//from cache
-		if err := m.Store.Get(CachePrefix+cc.Cache.Key, cc.requestPath, cache); err == nil {
+		if err := m.Store.Get(c, CachePrefix+cc.Cache.Key, cc.requestPath, &cache); err == nil {
 			if m.AddCacheHeader {
 				cache.AddCacheHeader(cc.requestPath, int8(CacheSource))
 			}
@@ -93,39 +90,40 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 			return
 		}
 
-		if !ce.Single {
+		doFunc := func(c2 *gin.Context) (interface{}, error) {
+			w := c2.Writer
+			// replace writer, add set context ResponseCacheContextKey
+			c2.Writer = newCacheWriter(c2.Writer, cc)
+			//此处Next()应执行业务逻辑,执行完后response应写入完毕,或c.Writer被篡改
+			c2.Next()
+			//get context ResponseCacheContextKey read response
+			cFromContext, ok := c2.Get(ResponseCacheContextKey)
+			if !ok {
+				return nil, responseCacheNotFoundError
+			}
+			c2.Writer = w
+			responseCache := cFromContext.(*store.ResponseCache)
+			if m.IsOK(responseCache) {
+				if err := m.Store.Set(c2, CachePrefix+cc.Cache.Key, cc.requestPath, responseCache, ce2.Ttl); err != nil {
+					log.Printf("cache store set err:%v", err)
+				}
+			}
+			if m.AddCacheHeader {
+				responseCache.AddCacheHeader(cc.requestPath, int8(LocalSource))
+			}
+			return responseCache, nil
+		}
+
+		if !ce2.Single {
 			// replace writer
-			c.Writer = newCacheWriter(c.Writer, cc)
+			doFunc(c)
 			return
 		}
 		isWrite := false
 		val, err := m.group.Do(cc.requestPath, func() (interface{}, error) {
-			doFunc := func() (interface{}, error) {
-				w := c.Writer
-				// replace writer, add set context ResponseCacheContextKey
-				c.Writer = newCacheWriter(c.Writer, cc)
-				//此处Next()应执行业务逻辑,执行完后response应写入完毕,或c.Writer被篡改
-				c.Next()
-				//get context ResponseCacheContextKey read response
-				cFromContext, ok := c.Get(ResponseCacheContextKey)
-				if !ok {
-					return nil, responseCacheNotFoundError
-				}
-				isWrite = true
-				c.Writer = w
-				responseCache := cFromContext.(*store.ResponseCache)
-				if m.IsOK(responseCache) {
-					if err := m.Store.Set(CachePrefix+ce.Key, cc.requestPath, responseCache, ce.Ttl); err != nil {
-						log.Printf("cache store set err:%v", err)
-					}
-				}
-				if m.AddCacheHeader {
-					responseCache.AddCacheHeader(cc.requestPath, int8(LocalSource))
-				}
-				return responseCache, nil
-			}
+			isWrite = true
 			//TODO add MutexLock
-			return doFunc()
+			return doFunc(c)
 		})
 		//from localCache
 		//TODO err!=nil 500的处理
@@ -164,9 +162,9 @@ func (m *CacheManager) IsOK(c *store.ResponseCache) bool {
 }
 
 type CacheStore interface {
-	Get(string, string, *store.ResponseCache) error
-	Set(string, string, *store.ResponseCache, time.Duration) error
-	Remove(string) error
+	Get(context.Context, string, string, *store.ResponseCache) error
+	Set(context.Context, string, string, *store.ResponseCache, time.Duration) error
+	Remove(context.Context, string) error
 }
 
 // CeOpt is an application option.
@@ -182,12 +180,12 @@ type Cache struct {
 type CacheContext struct {
 	*gin.Context
 	*CacheManager
-	*Cache
+	Cache
 	requestPath string
 }
 
 func (c *CacheContext) Remove() error {
-	return Remove(c.CacheManager, c.Key)
+	return Remove(c.Context, c.CacheManager, c.Key)
 }
 
 type cacheWriter struct {
@@ -212,27 +210,28 @@ func (w *cacheWriter) Write(data []byte) (int, error) {
 func newCacheWriter(writer gin.ResponseWriter, cc *CacheContext) *cacheWriter {
 	return &cacheWriter{writer, cc}
 }
-func urlEscape(prefix string, u string) string {
-	key := url.QueryEscape(u)
-	if len(key) > 200 {
-		h := sha1.New()
-		_, err := io.WriteString(h, u)
-		if err != nil {
-			return ""
-		}
-		key = string(h.Sum(nil))
-	}
-	var buffer bytes.Buffer
-	buffer.WriteString(prefix)
-	buffer.WriteString(":")
-	buffer.WriteString(key)
-	return buffer.String()
-}
+
+//func urlEscape(prefix string, u string) string {
+//	key := url.QueryEscape(u)
+//	if len(key) > 200 {
+//		h := sha1.New()
+//		_, err := io.WriteString(h, u)
+//		if err != nil {
+//			return ""
+//		}
+//		key = string(h.Sum(nil))
+//	}
+//	var buffer bytes.Buffer
+//	buffer.WriteString(prefix)
+//	buffer.WriteString(":")
+//	buffer.WriteString(key)
+//	return buffer.String()
+//}
 
 //map至有序字符串
 func makeMapSortToString(m map[string]string) string {
 	var keys []string
-	for k, _ := range m {
+	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Sort(sort.StringSlice(keys))

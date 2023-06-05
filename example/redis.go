@@ -10,7 +10,7 @@ func RunWithRedis() *gin.Engine {
 	m := apicache.NewDefault(&store.RedisConf{
 		Addr: "10.1.2.7:6379",
 		Auth: "",
-		DB:   0,
+		DB:   3,
 	})
 	return route(m)
 }

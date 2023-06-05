@@ -1,10 +1,11 @@
 package store
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"github.com/go-redis/redis/v7"
 	"time"
+
+	"github.com/go-redis/redis/v8"
 )
 
 type RedisConf struct {
@@ -19,7 +20,7 @@ type RedisStore struct {
 
 func NewRedisStore(opt *redis.Options) *RedisStore {
 	client := redis.NewClient(opt)
-	result, err := client.Ping().Result()
+	result, err := client.Ping(context.Background()).Result()
 	if err != nil || result != "PONG" {
 		panic(err)
 	}
@@ -37,14 +38,14 @@ func NewRedisStoreDefault(conf *RedisConf) *RedisStore {
 	return NewRedisStore(opt)
 }
 
-func (c *RedisStore) Set(key string, k string, val *ResponseCache, ttl time.Duration) error {
-	v, err := json.Marshal(val)
+func (c *RedisStore) Set(ctx context.Context, key string, k string, val *ResponseCache, ttl time.Duration) error {
+	v, err := val.MarshalBinary()
 	if err != nil {
 		return err
 	}
-	_, err = c.Client.TxPipelined(func(pipeline redis.Pipeliner) error {
-		err := pipeline.HSet(key, k, v).Err()
-		er2 := pipeline.Expire(key, ttl).Err()
+	_, err = c.Client.TxPipelined(ctx, func(pipeline redis.Pipeliner) error {
+		err := pipeline.HSet(ctx, key, k, v).Err()
+		er2 := pipeline.Expire(ctx, key, ttl).Err()
 		if er2 != nil {
 			err = er2
 		}
@@ -53,10 +54,10 @@ func (c *RedisStore) Set(key string, k string, val *ResponseCache, ttl time.Dura
 	return err
 }
 
-func (c *RedisStore) Get(key string, k string, val *ResponseCache) error {
-	res, err := c.Client.TxPipelined(func(pipeline redis.Pipeliner) error {
-		err := pipeline.HGet(key, k).Err()
-		er2 := pipeline.TTL(key).Err()
+func (c *RedisStore) Get(ctx context.Context, key string, k string, val *ResponseCache) error {
+	res, err := c.Client.TxPipelined(ctx, func(pipeline redis.Pipeliner) error {
+		err := pipeline.HGet(ctx, key, k).Err()
+		er2 := pipeline.TTL(ctx, key).Err()
 		if er2 != nil {
 			err = er2
 		}
@@ -65,11 +66,7 @@ func (c *RedisStore) Get(key string, k string, val *ResponseCache) error {
 	if err != nil {
 		return err
 	}
-	r, err := (res[0]).(*redis.StringCmd).Bytes()
-	if err != nil {
-		return err
-	}
-	err = json.Unmarshal(r, val)
+	err = (res[0]).(*redis.StringCmd).Scan(val)
 	if err != nil {
 		return err
 	}
@@ -77,7 +74,7 @@ func (c *RedisStore) Get(key string, k string, val *ResponseCache) error {
 	return nil
 }
 
-func (c *RedisStore) Remove(key string) error {
-	_, err := c.Client.Del(key).Result()
+func (c *RedisStore) Remove(ctx context.Context, key string) error {
+	_, err := c.Client.Del(ctx, key).Result()
 	return err
 }

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -21,7 +22,7 @@ type item struct {
 	isForever  bool
 }
 
-func (c *memoryStore) Set(key string, k string, val *ResponseCache, ttl time.Duration) error {
+func (c *memoryStore) Set(ctx context.Context, key string, k string, val *ResponseCache, ttl time.Duration) error {
 	isForever := false
 	expireTime := time.Now().Add(ttl)
 	if ttl < 0 {
@@ -38,7 +39,7 @@ func (c *memoryStore) Set(key string, k string, val *ResponseCache, ttl time.Dur
 	c.Unlock()
 	return nil
 }
-func (c *memoryStore) Get(key string, k string, val *ResponseCache) (err error) {
+func (c *memoryStore) Get(ctx context.Context, key string, k string, val *ResponseCache) (err error) {
 	c.Lock()
 	defer func() {
 		c.Unlock()
@@ -57,7 +58,7 @@ func (c *memoryStore) Get(key string, k string, val *ResponseCache) (err error) 
 	err = errors.New("val is nil")
 	return
 }
-func (c *memoryStore) Remove(key string) error {
+func (c *memoryStore) Remove(ctx context.Context, key string) error {
 	c.Lock()
 	delete(c.items, key)
 	c.Unlock()
