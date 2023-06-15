@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	DefaultExpire           = time.Minute * 2
+	DefaultExpire           = time.Minute
 	ForeverExpire           = time.Duration(-1)
 	CachePrefix             = "url_data_cache:"
 	ResponseCacheContextKey = "responseCache"
@@ -61,50 +61,50 @@ func Remove(ctx context.Context, m *CacheManager, key string) error {
 }
 
 // CacheFunc Cache Decorator
-func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
+func CacheFunc(m *CacheManager, opts ...CeOpt) gin.HandlerFunc {
 	ce := &Cache{Single: true}
-	for _, c := range co {
-		c(ce)
+	for _, opt := range opts {
+		opt(ce)
 	}
 	if ce.Ttl == 0 {
 		ce.Ttl = DefaultExpire
 	}
-	return func(c *gin.Context) {
+	return func(ctx *gin.Context) {
 		ce2 := *ce
 		if ce2.Key == "" {
-			ce2.Key = c.Request.URL.Path
+			ce2.Key = ctx.Request.URL.Path
 		}
 		if ce2.KMap != nil {
 			ce2.Key = ce2.Key + makeMapSortToString(ce2.KMap)
 		}
-		cc := &CacheContext{c, m, ce2, c.Request.RequestURI}
+		cc := &CacheContext{ctx, m, ce2, ctx.Request.RequestURI}
 
 		cache := store.ResponseCache{Header: make(map[string][]string)}
 		//from cache
-		if err := m.Store.Get(c, CachePrefix+cc.Cache.Key, cc.requestPath, &cache); err == nil {
+		if err := m.Store.Get(ctx, CachePrefix+cc.Cache.Key, cc.requestPath, &cache); err == nil {
 			if m.AddCacheHeader {
 				cache.AddCacheHeader(cc.requestPath, int8(CacheSource))
 			}
-			cache.Write(c.Writer)
-			c.Abort()
+			cache.Write(ctx.Writer)
+			ctx.Abort()
 			return
 		}
 
-		doFunc := func(c2 *gin.Context) (interface{}, error) {
-			w := c2.Writer
+		doFunc := func(c *gin.Context) (interface{}, error) {
+			w := c.Writer
 			// replace writer, add set context ResponseCacheContextKey
-			c2.Writer = newCacheWriter(c2.Writer, cc)
+			c.Writer = newCacheWriter(c.Writer, cc)
 			//此处Next()应执行业务逻辑,执行完后response应写入完毕,或c.Writer被篡改
-			c2.Next()
+			c.Next()
 			//get context ResponseCacheContextKey read response
-			cFromContext, ok := c2.Get(ResponseCacheContextKey)
+			cFromContext, ok := c.Get(ResponseCacheContextKey)
 			if !ok {
 				return nil, responseCacheNotFoundError
 			}
-			c2.Writer = w
+			c.Writer = w
 			responseCache := cFromContext.(*store.ResponseCache)
 			if m.IsOK(responseCache) {
-				if err := m.Store.Set(c2, CachePrefix+cc.Cache.Key, cc.requestPath, responseCache, ce2.Ttl); err != nil {
+				if err := m.Store.Set(c, CachePrefix+cc.Cache.Key, cc.requestPath, responseCache, ce2.Ttl); err != nil {
 					log.Printf("cache store set err:%v", err)
 				}
 			}
@@ -116,22 +116,24 @@ func CacheFunc(m *CacheManager, co ...CeOpt) gin.HandlerFunc {
 
 		if !ce2.Single {
 			// replace writer
-			doFunc(c)
+			doFunc(ctx)
 			return
 		}
 		isWrite := false
 		val, err := m.group.Do(cc.requestPath, func() (interface{}, error) {
 			isWrite = true
 			//TODO add MutexLock
-			return doFunc(c)
+			return doFunc(ctx)
 		})
-		//from localCache
-		//TODO err!=nil 500的处理
+		// from localCache
 		if !isWrite && err == nil {
 			v := val.(*store.ResponseCache)
-			v.Write(c.Writer)
+			v.Write(ctx.Writer)
 		}
-		c.Abort()
+		if err != nil {
+			log.Printf("local cache get err:%v", err)
+		}
+		ctx.Abort()
 		return
 	}
 }

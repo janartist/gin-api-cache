@@ -1,4 +1,4 @@
-~~## Gin middleware/handler to enable Cache
+## Gin middleware/handler to enable Cache
 
 ### 用于缓存http接口内容的gin高性能中间件
 
@@ -8,6 +8,7 @@
 - 使用hash数据结构来解决同个接口的数据组批量维护的问题
 - 使用过期时间加删除缓存策略（不覆盖）
 - mode参数可选择缓存http状态码为2xx的回包
+- 应用此缓存策略，DB查询存在主从架构则存在数据主从同步延迟问题。请悉知并按需解决选择
 
 
 ### 击穿逻辑
